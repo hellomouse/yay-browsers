@@ -52,6 +52,7 @@ export async function launchChrome(options: Options): Promise<LaunchResult> {
       `--remote-debugging-port=${opts.listenPort}`,
       `--user-data-dir=${opts.dataDir}`,
       ...opts.extraArgs,
+      'about:blank',
     ],
     {
       stdio: [null, 'pipe', 'pipe'],
@@ -88,7 +89,11 @@ export async function launchChrome(options: Options): Promise<LaunchResult> {
           return;
         }
         // great API
-        let defaultPort = addr.protocol === 'wss' ? '443' : '80';
+        if (!['ws:', 'wss:'].includes(addr.protocol)) {
+          bail(`unexpected protocol: ${addr.protocol}`);
+          return;
+        }
+        let defaultPort = addr.protocol === 'wss:' ? '443' : '80';
         if ((addr.port || defaultPort) !== port.toString()) {
           bail(`bad port: expected ${port}, got ${addr.port}`);
           return;
@@ -101,12 +106,13 @@ export async function launchChrome(options: Options): Promise<LaunchResult> {
       }
     };
     let exitListener = (code: number | null, signal: string | null) => {
-      bail(`browser unexpectedly exited with ${code ?? signal}`);
+      bail(`browser unexpectedly exited with ${code ?? signal}\nlast log:\n${buffer.toString()}`);
     };
     function removeListeners() {
       clearTimeout(timeout);
       proc.stderr.removeListener('data', stderrListener);
       proc.removeListener('exit', exitListener);
+      proc.stderr.resume();
     }
     function bail(...args: ConstructorParameters<typeof Error>) {
       removeListeners();
